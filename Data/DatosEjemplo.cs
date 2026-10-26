@@ -66,25 +66,25 @@ public static class DatosEjemplo
             {
                 Login = "recepcion",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("recepcion123"),
-                Rol = "Recepcionista"
+                Rol = Roles.Recepcionista
             });
         }
 
         // ---------------- Visitantes (datos ficticios) ----------------
         var visitantes = new List<Visitante>
         {
-            NuevoVisitante("Pedro Alvarado",   "2543178900101", "5512 3456", "pedro.alvarado@correo.com"),
-            NuevoVisitante("Karla Ixcoy",      "2610445210402", "4234 7788", "karla.ixcoy@correo.com"),
-            NuevoVisitante("Luis Tzoc",        "1987654320401", "5890 1122", "luis.tzoc@correo.com"),
-            NuevoVisitante("Andrea Cifuentes", "2345678901301", "3345 6677", "andrea.cifuentes@correo.com"),
-            NuevoVisitante("Marvin Colop",     "2278901234502", "4100 2299", "marvin.colop@correo.com"),
-            NuevoVisitante("Silvia Batz",      "2456123780403", "5566 0011", "silvia.batz@correo.com"),
-            NuevoVisitante("Héctor Xicay",     "2098765431204", "3021 8844", "hector.xicay@correo.com"),
-            NuevoVisitante("Brenda Coyoy",     "2567890123405", "5733 9900", "brenda.coyoy@correo.com"),
-            NuevoVisitante("Julio Chivalán",   "2189012345606", "4455 1313", "julio.chivalan@correo.com"),
-            NuevoVisitante("Evelyn Sirín",     "2334455667807", "5099 4242", "evelyn.sirin@correo.com"),
-            NuevoVisitante("Fernando Tohom",   "2401122334408", "3188 7070", "fernando.tohom@correo.com"),
-            NuevoVisitante("Gabriela Yac",     "2512233445509", "4677 5050", "gabriela.yac@correo.com")
+            NuevoVisitante("Pedro Alvarado",   "2543178900101", "55123456", "pedro.alvarado@correo.com"),
+            NuevoVisitante("Karla Ixcoy",      "2610445210402", "42347788", "karla.ixcoy@correo.com"),
+            NuevoVisitante("Luis Tzoc",        "1987654320401", "58901122", "luis.tzoc@correo.com"),
+            NuevoVisitante("Andrea Cifuentes", "2345678901301", "33456677", "andrea.cifuentes@correo.com"),
+            NuevoVisitante("Marvin Colop",     "2278901234502", "41002299", "marvin.colop@correo.com"),
+            NuevoVisitante("Silvia Batz",      "2456123780403", "55660011", "silvia.batz@correo.com"),
+            NuevoVisitante("Héctor Xicay",     "2098765431204", "30218844", "hector.xicay@correo.com"),
+            NuevoVisitante("Brenda Coyoy",     "2567890123405", "57339900", "brenda.coyoy@correo.com"),
+            NuevoVisitante("Julio Chivalán",   "2189012345606", "44551313", "julio.chivalan@correo.com"),
+            NuevoVisitante("Evelyn Sirín",     "2334455667807", "50994242", "evelyn.sirin@correo.com"),
+            NuevoVisitante("Fernando Tohom",   "2401122334408", "31887070", "fernando.tohom@correo.com"),
+            NuevoVisitante("Gabriela Yac",     "2512233445509", "46775050", "gabriela.yac@correo.com")
         };
         db.Visitantes.AddRange(visitantes);
 
@@ -128,7 +128,8 @@ public static class DatosEjemplo
         var ahora = DateTime.Now;
         visitas.Add(NuevaVisitaAbierta(visitantes[0], empleados[0], "Cita con gerencia", ahora.AddMinutes(-15), true));
         visitas.Add(NuevaVisitaAbierta(visitantes[3], empleados[3], "Auditoría", ahora.AddMinutes(-40), true));
-        visitas.Add(NuevaVisitaAbierta(visitantes[7], empleados[6], "Cotización de servicios", ahora.AddMinutes(-70), false));
+        visitas.Add(NuevaVisitaAbierta(visitantes[7], empleados[6], "Cotización de servicios", ahora.AddMinutes(-70), true));
+        visitas.Add(NuevaVisitaAbierta(visitantes[5], empleados[0], "Entrega de documentos", ahora.AddMinutes(-5), true));
 
         db.Visitas.AddRange(visitas);
 
@@ -139,27 +140,74 @@ public static class DatosEjemplo
             v.EsPrimeraVisita = total <= 1;
         }
 
-        // ---------------- Bitácora de notificaciones ----------------
-        int contador = 0;
-        foreach (var visita in visitas)
+        // ---------------- Avisos internos a los anfitriones ----------------
+        // Las visitas pasadas ya fueron leídas; las de hoy quedan "sin leer"
+        // para que la pantalla de avisos tenga algo que mostrar.
+        foreach (var visita in visitas.Where(v => v.NotificacionEnviada))
         {
-            contador++;
+            bool esDeHoy = visita.FechaHoraSalida == null;
 
-            // Una de cada 15 visitas "fallo" el correo, para ver errores en la bitácora
-            bool fallo = !visita.NotificacionEnviada || contador % 15 == 0;
-            if (fallo)
-                visita.NotificacionEnviada = false;
-
-            db.LogsNotificacion.Add(new LogNotificacion
+            db.Avisos.Add(new Aviso
             {
                 Visita = visita,
-                FechaEnvio = visita.FechaHoraEntrada.AddSeconds(2),
-                Estado = fallo ? "Error" : "Enviado",
-                Detalle = fallo ? "No se pudo conectar con el servidor SMTP (dato de ejemplo)." : ""
+                Empleado = visita.Empleado,
+                FechaCreacion = visita.FechaHoraEntrada.AddSeconds(2),
+                Mensaje = $"{visita.Visitante!.Nombre} llegó a recepción para verte " +
+                          $"({visita.Area!.Nombre}). Motivo: {visita.Motivo}.",
+                Leido = !esDeHoy,
+                FechaLectura = esDeHoy ? null : visita.FechaHoraEntrada.AddMinutes(rnd.Next(1, 6))
             });
         }
 
         db.SaveChanges();
+    }
+
+    /// <summary>
+    /// Crea un usuario con rol Trabajador para cada empleado activo (contraseña "trabajador123").
+    /// El login es la inicial del nombre + el último apellido, sin tildes: "Ana Lucía Morales" -> "amorales".
+    /// Solo se ejecuta si todavía no hay ningún trabajador, para no crear usuarios cada vez que se abre el programa.
+    /// </summary>
+    public static void CrearUsuariosTrabajadores(AppDbContext db)
+    {
+        if (db.Usuarios.Any(u => u.Rol == Roles.Trabajador))
+            return;
+
+        var empleados = db.Empleados
+            .Where(e => e.Activo && !db.Usuarios.Any(u => u.IdEmpleado == e.IdEmpleado))
+            .ToList();
+
+        foreach (var empleado in empleados)
+        {
+            var palabras = SinTildes(empleado.Nombre).ToLower()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (palabras.Length == 0) continue;
+
+            string baseLogin = palabras.Length == 1 ? palabras[0] : palabras[0][0] + palabras[^1];
+            string login = baseLogin;
+            for (int n = 2; db.Usuarios.Any(u => u.Login == login) || db.Usuarios.Local.Any(u => u.Login == login); n++)
+                login = baseLogin + n;   // por si dos empleados generan el mismo login
+
+            db.Usuarios.Add(new Usuario
+            {
+                Login = login,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("trabajador123"),
+                Rol = Roles.Trabajador,
+                IdEmpleado = empleado.IdEmpleado
+            });
+        }
+
+        db.SaveChanges();
+    }
+
+    private static string SinTildes(string texto)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (char c in texto.Normalize(System.Text.NormalizationForm.FormD))
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        }
+        return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
     }
 
     // ======== Métodos auxiliares para no repetir código ========

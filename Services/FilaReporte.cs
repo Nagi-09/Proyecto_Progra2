@@ -15,5 +15,5 @@ public class FilaReporte
     public string Entrada { get; set; } = "";
     public string Salida { get; set; } = "";
     public string DuracionMin { get; set; } = "";
-    public string Notificado { get; set; } = "";
+    public string Aviso { get; set; } = "";     // "Leído", "Sin leer" o "No enviado"
 }

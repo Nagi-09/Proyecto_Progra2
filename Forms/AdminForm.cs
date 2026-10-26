@@ -44,6 +44,7 @@ public class AdminForm : Form
     private readonly TextBox txtUsrLogin = new();
     private readonly TextBox txtUsrPass = new();
     private readonly ComboBox cmbUsrRol = new();
+    private readonly ComboBox cmbUsrEmpleado = new();
     private readonly DataGridView dgvUsuarios = new();
 
     public AdminForm()
@@ -60,17 +61,18 @@ public class AdminForm : Form
         tabs.TabPages.Add(ConstruirTabLimites());
         tabs.TabPages.Add(ConstruirTabUsuarios());
 
-        // Fondo gris claro en cada pestaña
+        // Fondo gris claro en cada pestaña; la negrita es solo para los títulos de las pestañas
         foreach (TabPage pagina in tabs.TabPages)
         {
             pagina.UseVisualStyleBackColor = false;
             pagina.BackColor = Estilo.Fondo;
+            pagina.Font = Estilo.Normal;
         }
 
         // Pestañas con diseño propio: la activa va en azul, las demás en gris
         tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
         tabs.SizeMode = TabSizeMode.Fixed;
-        tabs.ItemSize = new Size(200, 40);
+        tabs.ItemSize = new Size(Estilo.Escalar(tabs, 200), Estilo.Escalar(tabs, 40));
         tabs.Font = Estilo.Negrita;
         tabs.DrawItem += (s, e) =>
         {
@@ -98,17 +100,51 @@ public class AdminForm : Form
         CargarEmpleados();
         CargarLimites();
         CargarUsuarios();
+
+        Estilo.AjustarAPantalla(this);
     }
 
     // =====================================================================
     //  Métodos auxiliares para no repetir código
     // =====================================================================
-    private static Label Etiqueta(string texto, int x, int y) =>
-        new Label { Text = texto, Left = x, Top = y + 3, AutoSize = true, ForeColor = Estilo.TextoSuave };
+    // Todas las pestañas tienen la misma forma:
+    //   arriba, una tarjeta con los campos (título encima de cada campo) y los botones;
+    //   abajo, una tarjeta con la tabla que ocupa el resto del espacio.
+    private const int Margen = 16;
+    private const int AltoFormulario = 132;
+    private const int FilaCampos = 16;    // y del título de los campos (el campo va 22 px abajo)
+    private const int FilaBotones = 80;   // y de los botones
+
+    /// <summary>Crea la pestaña con su tarjeta de campos (que se devuelve) y su tarjeta de tabla.</summary>
+    private static TabPage NuevaPestana(string titulo, DataGridView dgv, out Panel formulario)
+    {
+        var tab = new TabPage(titulo);
+
+        formulario = Estilo.Tarjeta(Margen, Margen, 800, AltoFormulario);
+        tab.Controls.Add(formulario);
+        Estilo.Estirar(formulario, alto: false);
+
+        var tarjetaTabla = Estilo.Tarjeta(Margen, Margen * 2 + AltoFormulario, 800, 300);
+        tarjetaTabla.Padding = new Padding(1);
+        ConfigurarGrid(dgv);
+        tarjetaTabla.Controls.Add(dgv);
+        tab.Controls.Add(tarjetaTabla);
+        Estilo.Estirar(tarjetaTabla);
+
+        return tab;
+    }
+
+    /// <summary>Agrega un campo a la tarjeta: título pequeño arriba y el control debajo.</summary>
+    private static void Campo(Panel tarjeta, string titulo, Control control, int x, int ancho)
+    {
+        tarjeta.Controls.Add(Estilo.Caption(titulo, x, FilaCampos));
+        control.SetBounds(x, FilaCampos + 22, ancho, 28);
+        tarjeta.Controls.Add(control);
+    }
 
     private static Button Boton(string texto, int x, int y, int ancho, EventHandler click)
     {
-        var b = new Button { Text = texto, Left = x, Top = y, Width = ancho, Height = 34 };
+        var b = new Button { Text = texto, Left = x, Top = y, Width = ancho, Height = 36 };
 
         // El color depende de la acción: rojo = baja, verde = agregar/guardar límite, azul = lo demás
         Color color;
@@ -127,11 +163,7 @@ public class AdminForm : Form
     private static void ConfigurarGrid(DataGridView dgv)
     {
         Estilo.Grid(dgv);   // estilo común de tablas
-        dgv.Left = 15;
-        dgv.Top = 130;
-        dgv.Width = 760;
-        dgv.Height = 340;
-        dgv.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        dgv.Dock = DockStyle.Fill;
         dgv.ReadOnly = true;
         dgv.AllowUserToAddRows = false;
         dgv.MultiSelect = false;
@@ -157,28 +189,21 @@ public class AdminForm : Form
     // =====================================================================
     private TabPage ConstruirTabAreas()
     {
-        var tab = new TabPage("Áreas");
+        var tab = NuevaPestana("Áreas", dgvAreas, out var f);
 
-        tab.Controls.Add(Etiqueta("Nombre:", 15, 20));
-        txtAreaNombre.SetBounds(90, 17, 250, 25);
-        tab.Controls.Add(txtAreaNombre);
+        Campo(f, "Nombre", txtAreaNombre, 20, 260);
+        Campo(f, "Descripción", txtAreaDesc, 296, 440);
 
-        tab.Controls.Add(Etiqueta("Descripción:", 360, 20));
-        txtAreaDesc.SetBounds(445, 17, 330, 25);
-        tab.Controls.Add(txtAreaDesc);
+        f.Controls.Add(Boton("Agregar", 20, FilaBotones, 120, AgregarArea));
+        f.Controls.Add(Boton("Guardar cambios", 152, FilaBotones, 150, ModificarArea));
+        f.Controls.Add(Boton("Dar de baja", 314, FilaBotones, 120, DarBajaArea));
 
-        tab.Controls.Add(Boton("Agregar", 15, 60, 110, AgregarArea));
-        tab.Controls.Add(Boton("Guardar cambios", 135, 60, 130, ModificarArea));
-        tab.Controls.Add(Boton("Dar de baja", 275, 60, 110, DarBajaArea));
-
-        ConfigurarGrid(dgvAreas);
         dgvAreas.SelectionChanged += (s, e) =>
         {
             if (dgvAreas.CurrentRow == null) return;
             txtAreaNombre.Text = dgvAreas.CurrentRow.Cells["Nombre"].Value?.ToString() ?? "";
             txtAreaDesc.Text = dgvAreas.CurrentRow.Cells["Descripcion"].Value?.ToString() ?? "";
         };
-        tab.Controls.Add(dgvAreas);
         return tab;
     }
 
@@ -247,31 +272,18 @@ public class AdminForm : Form
     // =====================================================================
     private TabPage ConstruirTabEmpleados()
     {
-        var tab = new TabPage("Empleados / Anfitriones");
+        var tab = NuevaPestana("Empleados / Anfitriones", dgvEmpleados, out var f);
 
-        tab.Controls.Add(Etiqueta("Nombre:", 15, 20));
-        txtEmpNombre.SetBounds(90, 17, 250, 25);
-        tab.Controls.Add(txtEmpNombre);
-
-        tab.Controls.Add(Etiqueta("Correo:", 360, 20));
-        txtEmpCorreo.SetBounds(445, 17, 330, 25);
-        tab.Controls.Add(txtEmpCorreo);
-
-        tab.Controls.Add(Etiqueta("Cargo:", 15, 55));
-        txtEmpCargo.SetBounds(90, 52, 250, 25);
-        tab.Controls.Add(txtEmpCargo);
-
-        tab.Controls.Add(Etiqueta("Área:", 360, 55));
-        cmbEmpArea.SetBounds(445, 52, 330, 25);
         cmbEmpArea.DropDownStyle = ComboBoxStyle.DropDownList;
-        tab.Controls.Add(cmbEmpArea);
+        Campo(f, "Nombre", txtEmpNombre, 20, 190);
+        Campo(f, "Correo", txtEmpCorreo, 226, 220);
+        Campo(f, "Cargo", txtEmpCargo, 462, 160);
+        Campo(f, "Área", cmbEmpArea, 638, 160);
 
-        tab.Controls.Add(Boton("Agregar", 15, 90, 110, AgregarEmpleado));
-        tab.Controls.Add(Boton("Guardar cambios", 135, 90, 130, ModificarEmpleado));
-        tab.Controls.Add(Boton("Dar de baja", 275, 90, 110, DarBajaEmpleado));
+        f.Controls.Add(Boton("Agregar", 20, FilaBotones, 120, AgregarEmpleado));
+        f.Controls.Add(Boton("Guardar cambios", 152, FilaBotones, 150, ModificarEmpleado));
+        f.Controls.Add(Boton("Dar de baja", 314, FilaBotones, 120, DarBajaEmpleado));
 
-        ConfigurarGrid(dgvEmpleados);
-        dgvEmpleados.Top = 130;
         dgvEmpleados.SelectionChanged += (s, e) =>
         {
             if (dgvEmpleados.CurrentRow == null) return;
@@ -280,7 +292,6 @@ public class AdminForm : Form
             txtEmpCargo.Text = dgvEmpleados.CurrentRow.Cells["Cargo"].Value?.ToString() ?? "";
             cmbEmpArea.SelectedValue = dgvEmpleados.CurrentRow.Cells["IdArea"].Value;
         };
-        tab.Controls.Add(dgvEmpleados);
         return tab;
     }
 
@@ -386,40 +397,35 @@ public class AdminForm : Form
     // =====================================================================
     private TabPage ConstruirTabLimites()
     {
-        var tab = new TabPage("Límites permitidos");
+        var tab = NuevaPestana("Límites permitidos", dgvLimites, out var f);
 
-        tab.Controls.Add(Etiqueta("Aplica a:", 15, 20));
-        cmbLimArea.SetBounds(90, 17, 300, 25);
         cmbLimArea.DropDownStyle = ComboBoxStyle.DropDownList;
-        tab.Controls.Add(cmbLimArea);
+        Campo(f, "Aplica a", cmbLimArea, 20, 280);
 
-        tab.Controls.Add(Etiqueta("Hora inicio:", 15, 55));
-        ConfigurarHora(dtpInicio, 90, 52);
-        tab.Controls.Add(dtpInicio);
+        ConfigurarHora(dtpInicio);
+        Campo(f, "Hora inicio", dtpInicio, 316, 120);
 
-        tab.Controls.Add(Etiqueta("Hora fin:", 230, 55));
-        ConfigurarHora(dtpFin, 295, 52);
-        tab.Controls.Add(dtpFin);
+        ConfigurarHora(dtpFin);
+        dtpFin.Value = DateTime.Today.AddHours(17);
+        Campo(f, "Hora fin", dtpFin, 452, 120);
 
-        tab.Controls.Add(Etiqueta("Duración máx. (min):", 440, 55));
-        nudDuracion.SetBounds(570, 52, 70, 25);
         nudDuracion.Minimum = 5;
         nudDuracion.Maximum = 1440;
         nudDuracion.Value = Config.DuracionGenericaMin;
-        tab.Controls.Add(nudDuracion);
+        Campo(f, "Duración máx. (min)", nudDuracion, 588, 140);
 
-        tab.Controls.Add(Boton("Guardar límite", 15, 90, 130, GuardarLimite));
+        f.Controls.Add(Boton("Guardar límite", 20, FilaBotones, 150, GuardarLimite));
+        f.Controls.Add(Estilo.Caption("Si el área ya tiene un límite, se reemplaza.", 186, FilaBotones + 10));
 
-        ConfigurarGrid(dgvLimites);
-        tab.Controls.Add(dgvLimites);
         return tab;
     }
 
-    private static void ConfigurarHora(DateTimePicker dtp, int x, int y)
+    private static void ConfigurarHora(DateTimePicker dtp)
     {
-        dtp.SetBounds(x, y, 90, 25);
-        dtp.Format = DateTimePickerFormat.Time;
+        dtp.Format = DateTimePickerFormat.Custom;
+        dtp.CustomFormat = "HH:mm";   // 24 horas, sin segundos
         dtp.ShowUpDown = true;
+        dtp.Value = DateTime.Today.AddHours(8);
     }
 
     private void CargarLimites()
@@ -435,6 +441,8 @@ public class AdminForm : Form
             })
             .ToList();
         dgvLimites.DataSource = lista;
+        dgvLimites.Columns["Inicio"]!.DefaultCellStyle.Format = @"hh\:mm";
+        dgvLimites.Columns["Fin"]!.DefaultCellStyle.Format = @"hh\:mm";
     }
 
     private void GuardarLimite(object? sender, EventArgs e)
@@ -480,32 +488,31 @@ public class AdminForm : Form
     // =====================================================================
     private TabPage ConstruirTabUsuarios()
     {
-        var tab = new TabPage("Usuarios");
+        var tab = NuevaPestana("Usuarios", dgvUsuarios, out var f);
 
-        tab.Controls.Add(Etiqueta("Login:", 15, 20));
-        txtUsrLogin.SetBounds(90, 17, 200, 25);
-        tab.Controls.Add(txtUsrLogin);
+        Campo(f, "Usuario (login)", txtUsrLogin, 20, 170);
 
-        tab.Controls.Add(Etiqueta("Contraseña:", 310, 20));
-        txtUsrPass.SetBounds(390, 17, 200, 25);
         txtUsrPass.UseSystemPasswordChar = true;
-        tab.Controls.Add(txtUsrPass);
+        Campo(f, "Contraseña", txtUsrPass, 206, 170);
 
-        tab.Controls.Add(Etiqueta("Rol:", 610, 20));
-        cmbUsrRol.SetBounds(650, 17, 125, 25);
         cmbUsrRol.DropDownStyle = ComboBoxStyle.DropDownList;
-        cmbUsrRol.Items.AddRange(new object[] { "Recepcionista", "Administrador" });
+        cmbUsrRol.Items.AddRange(Roles.Todos);
         cmbUsrRol.SelectedIndex = 0;
-        tab.Controls.Add(cmbUsrRol);
+        cmbUsrRol.SelectedIndexChanged += (s, e) =>
+            cmbUsrEmpleado.Enabled = cmbUsrRol.SelectedItem as string == Roles.Trabajador;
+        Campo(f, "Rol", cmbUsrRol, 392, 150);
 
-        tab.Controls.Add(Boton("Agregar", 15, 60, 110, AgregarUsuario));
-        tab.Controls.Add(Boton("Cambiar contraseña", 135, 60, 150, CambiarPassword));
-        tab.Controls.Add(Boton("Dar de baja", 295, 60, 110, DarBajaUsuario));
+        // Solo el rol Trabajador se liga a un empleado (para ver únicamente sus avisos)
+        cmbUsrEmpleado.DropDownStyle = ComboBoxStyle.DropDownList;
+        cmbUsrEmpleado.Enabled = false;
+        Campo(f, "Empleado (solo rol Trabajador)", cmbUsrEmpleado, 558, 220);
 
-        ConfigurarGrid(dgvUsuarios);
-        dgvUsuarios.Top = 110;
-        dgvUsuarios.Height = 360;
-        tab.Controls.Add(dgvUsuarios);
+        f.Controls.Add(Boton("Agregar", 20, FilaBotones, 120, AgregarUsuario));
+        f.Controls.Add(Boton("Cambiar contraseña", 152, FilaBotones, 170, CambiarPassword));
+        f.Controls.Add(Boton("Dar de baja", 334, FilaBotones, 120, DarBajaUsuario));
+
+        // Al entrar a la pestaña se recargan los empleados (por si se agregó uno en la otra pestaña)
+        tabs.SelectedIndexChanged += (s, e) => { if (tabs.SelectedTab == tab) CargarEmpleadosUsuario(); };
         return tab;
     }
 
@@ -514,10 +521,31 @@ public class AdminForm : Form
         using var db = new AppDbContext();
         dgvUsuarios.DataSource = db.Usuarios
             .Where(u => u.Activo)
-            .OrderBy(u => u.Login)
-            .Select(u => new { u.IdUsuario, u.Login, u.Rol })   // ¡nunca mostramos el hash!
+            .OrderBy(u => u.Rol).ThenBy(u => u.Login)
+            .Select(u => new
+            {
+                u.IdUsuario,
+                u.Login,
+                u.Rol,
+                Empleado = u.Empleado != null ? u.Empleado.Nombre : ""
+            })   // ¡nunca mostramos el hash!
             .ToList();
         dgvUsuarios.Columns["IdUsuario"]!.Visible = false;
+
+        CargarEmpleadosUsuario();
+    }
+
+    /// <summary>Empleados activos que todavía no tienen usuario (para el combo del rol Trabajador).</summary>
+    private void CargarEmpleadosUsuario()
+    {
+        using var db = new AppDbContext();
+        cmbUsrEmpleado.DataSource = db.Empleados
+            .Where(e => e.Activo && !db.Usuarios.Any(u => u.Activo && u.IdEmpleado == e.IdEmpleado))
+            .OrderBy(e => e.Nombre)
+            .Select(e => new ItemCombo { Id = e.IdEmpleado, Texto = e.Nombre })
+            .ToList();
+        cmbUsrEmpleado.DisplayMember = "Texto";
+        cmbUsrEmpleado.ValueMember = "Id";
     }
 
     private void AgregarUsuario(object? sender, EventArgs e)
@@ -527,9 +555,21 @@ public class AdminForm : Form
             Aviso("Escriba el login y una contraseña de al menos 4 caracteres.");
             return;
         }
+        string rol = cmbUsrRol.SelectedItem!.ToString()!;
+        int? idEmpleado = null;
+        if (rol == Roles.Trabajador)
+        {
+            if (cmbUsrEmpleado.SelectedItem is not ItemCombo empleado)
+            {
+                Aviso("Seleccione el empleado. (Todos los empleados activos ya tienen usuario.)");
+                return;
+            }
+            idEmpleado = empleado.Id;
+        }
+
         try
         {
-            _auth.CrearUsuario(txtUsrLogin.Text.Trim(), txtUsrPass.Text, cmbUsrRol.SelectedItem!.ToString()!);
+            _auth.CrearUsuario(txtUsrLogin.Text.Trim(), txtUsrPass.Text, rol, idEmpleado);
             txtUsrLogin.Clear();
             txtUsrPass.Clear();
             CargarUsuarios();
@@ -564,7 +604,7 @@ public class AdminForm : Form
 
             // Protección: no permitir quedarse sin administradores
             var usuario = db.Usuarios.First(u => u.IdUsuario == id);
-            if (usuario.Rol == "Administrador" && db.Usuarios.Count(u => u.Activo && u.Rol == "Administrador") <= 1)
+            if (usuario.EsAdministrador && db.Usuarios.Count(u => u.Activo && u.Rol == Roles.Administrador) <= 1)
             {
                 Aviso("No se puede dar de baja al único administrador.");
                 return;

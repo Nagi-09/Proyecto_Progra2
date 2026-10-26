@@ -41,7 +41,8 @@ public class ReporteForm : Form
 
         barra.Controls.Add(Estilo.Caption("Fecha", 190, 14));
         dtpFecha.SetBounds(190, 36, 160, 28);
-        dtpFecha.Format = DateTimePickerFormat.Short;
+        dtpFecha.Format = DateTimePickerFormat.Custom;
+        dtpFecha.CustomFormat = "dd/MM/yyyy";   // mismo formato que el resto del programa
         dtpFecha.Value = DateTime.Today;
 
         lblResumen.SetBounds(380, 16, 410, 54);
@@ -77,6 +78,7 @@ public class ReporteForm : Form
         dtpFecha.ValueChanged += (s, e) => CargarReporte();
 
         CargarReporte();
+        Estilo.AjustarAPantalla(this);
     }
 
     private VistaReporte VistaSeleccionada()

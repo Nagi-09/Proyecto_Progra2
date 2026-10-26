@@ -40,6 +40,29 @@ public static class Estilo
         f.ForeColor = Texto;
     }
 
+    /// <summary>
+    /// Se llama al FINAL del constructor de cada ventana, cuando ya tiene todos sus controles.
+    /// Todas las posiciones del programa están pensadas para pantallas al 100 % (96 DPI);
+    /// si la pantalla usa 125 %, 150 %, etc., aquí se agranda todo en la misma proporción.
+    /// (Sin esto las letras crecen pero los cuadros no, y los textos se enciman o se cortan.)
+    /// </summary>
+    public static void AjustarAPantalla(Form f)
+    {
+        f.AutoScaleDimensions = new SizeF(96F, 96F);
+        f.AutoScaleMode = AutoScaleMode.Dpi;   // al asignarlo, escala la ventana y todo lo que contiene
+
+        // Si aun así la ventana no cabe en la pantalla, se recorta al espacio disponible
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+        f.MinimumSize = new Size(Math.Min(f.MinimumSize.Width, area.Width), Math.Min(f.MinimumSize.Height, area.Height));
+        f.Size = new Size(Math.Min(f.Width, area.Width), Math.Min(f.Height, area.Height));
+    }
+
+    /// <summary>
+    /// Convierte píxeles "de 100 %" a píxeles reales según la escala de la pantalla.
+    /// Sirve para medidas que Windows Forms no escala solo (alto de filas, tamaño de pestañas).
+    /// </summary>
+    public static int Escalar(Control c, int pixeles) => (int)Math.Round(pixeles * c.DeviceDpi / 96.0);
+
     /// <summary>Barra azul de arriba con título y subtítulo.</summary>
     public static Panel Encabezado(string titulo, string subtitulo)
     {
@@ -173,9 +196,12 @@ public static class Estilo
                     t.Font = Normal;
                     break;
                 case ComboBox cb:
-                    cb.FlatStyle = FlatStyle.Flat;
+                    // El estilo de Windows dibuja el borde; el plano lo pierde sobre fondo blanco
+                    cb.FlatStyle = FlatStyle.System;
                     cb.Font = Normal;
-                    cb.BackColor = Color.White;
+                    break;
+                case DateTimePicker d:
+                    d.Font = Normal;
                     break;
                 case ListBox lb:
                     lb.BorderStyle = BorderStyle.FixedSingle;
@@ -208,11 +234,12 @@ public static class Estilo
         g.ColumnHeadersDefaultCellStyle.SelectionForeColor = Color.White;
         g.ColumnHeadersDefaultCellStyle.Font = Negrita;
         g.ColumnHeadersDefaultCellStyle.Padding = new Padding(6, 0, 0, 0);
+        g.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.False;   // títulos en una sola línea
         g.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-        g.ColumnHeadersHeight = 38;
+        g.ColumnHeadersHeight = Escalar(g, 38);
 
         g.RowHeadersVisible = false;
-        g.RowTemplate.Height = 32;
+        g.RowTemplate.Height = Escalar(g, 32);
         g.DefaultCellStyle.Font = Normal;
         g.DefaultCellStyle.ForeColor = Texto;
         g.DefaultCellStyle.BackColor = Blanco;
@@ -228,23 +255,84 @@ public static class Estilo
         g.MultiSelect = false;
         g.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
         g.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+
+        // Las columnas toman el nombre de la propiedad (sin tildes); aquí se les pone un título legible
+        g.DataBindingComplete += (s, e) =>
+        {
+            foreach (DataGridViewColumn col in g.Columns)
+            {
+                if (TitulosColumnas.TryGetValue(col.Name, out var titulo))
+                    col.HeaderText = titulo;
+            }
+        };
+    }
+
+    private static readonly Dictionary<string, string> TitulosColumnas = new()
+    {
+        ["Anfitrion"] = "Anfitrión",
+        ["Aplica"] = "Aplica a",
+        ["Area"] = "Área",
+        ["Descripcion"] = "Descripción",
+        ["DuracionMin"] = "Minutos",
+        ["DuracionMaxMin"] = "Duración máx. (min)",
+        ["Inicio"] = "Hora inicio",
+        ["Fin"] = "Hora fin",
+    };
+
+    // ===================== ACOMODO =====================
+    /// <summary>
+    /// Hace que el control llegue hasta el borde derecho (y, si alto = true, hasta el de abajo)
+    /// de su contenedor, dejando el mismo margen que tiene a la izquierda. Se mantiene al
+    /// cambiar el tamaño de la ventana. Llamarlo después de agregar el control a su contenedor.
+    /// (Sirve donde Anchor no funciona bien, por ejemplo dentro de las pestañas.)
+    /// </summary>
+    public static void Estirar(Control c, bool alto = true)
+    {
+        var contenedor = c.Parent!;
+        c.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+
+        void Acomodar()
+        {
+            int margen = c.Left;
+            c.Width = Math.Max(0, contenedor.ClientSize.Width - c.Left - margen);
+            if (alto)
+                c.Height = Math.Max(0, contenedor.ClientSize.Height - c.Top - margen);
+        }
+
+        contenedor.Resize += (s, e) => Acomodar();
+        Acomodar();
     }
 
     /// <summary>
-    /// Pinta de verde/rojo la columna "Notificado" y de naranja las salidas pendientes (—).
+    /// Pinta el estado del aviso (verde = leído, naranja = sin leer, rojo = no enviado)
+    /// y de naranja las salidas pendientes (—).
     /// Se conecta al evento CellFormatting de la tabla.
     /// </summary>
     public static void FormatoCeldas(DataGridView g, DataGridViewCellFormattingEventArgs e)
     {
         if (e.ColumnIndex < 0 || e.RowIndex < 0) return;
-        if (e.Value is not string texto) return;
+        if (e.Value is not string texto || e.CellStyle == null) return;
 
         string columna = g.Columns[e.ColumnIndex].Name;
 
-        if (columna == "Notificado")
+        if (columna == "Aviso" || columna == "Estado")
         {
-            e.CellStyle.ForeColor = texto == "Sí" ? Exito : Peligro;
+            e.CellStyle.ForeColor = texto switch
+            {
+                "Leído" => Exito,
+                "Sin leer" => Advertencia,
+                _ => Peligro
+            };
             e.CellStyle.Font = Negrita;
+        }
+        else if ((columna == "Tipo" && texto == "Tiempo terminado") || (columna == "Visita" && texto == "Tiempo excedido"))
+        {
+            e.CellStyle.ForeColor = Peligro;
+            e.CellStyle.Font = Negrita;
+        }
+        else if (columna == "Visita" && texto.StartsWith("En curso"))
+        {
+            e.CellStyle.ForeColor = Exito;
         }
         else if (columna == "Salida" && texto == "—")
         {

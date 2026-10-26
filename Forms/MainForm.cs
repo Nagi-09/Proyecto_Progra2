@@ -9,11 +9,17 @@ public class MainForm : Form
 {
     private readonly Usuario _usuario;
     private readonly VisitaService _visitaService = new();
+    private readonly NotificacionService _notificacionService = new();
 
     // Números de las tarjetas de resumen
     private readonly Label lblHoy = new();
     private readonly Label lblDentro = new();
     private readonly Label lblMes = new();
+    private readonly Label lblAvisos = new();
+
+    // Cuatro columnas de 220 px con 20 px de separación
+    private const int AnchoTarjeta = 220;
+    private static int Columna(int i) => 20 + i * (AnchoTarjeta + 20);
 
     public MainForm(Usuario usuario)
     {
@@ -29,7 +35,9 @@ public class MainForm : Form
         // ---------- Encabezado ----------
         var encabezado = Estilo.Encabezado(
             "Sistema de Registro de Visitas",
-            "Recepción  ·  Control de ingreso y salida");
+            _usuario.EsTrabajador
+                ? $"Hola, {_usuario.Empleado?.Nombre}  ·  Sus visitas y avisos"
+                : "Recepción  ·  Control de ingreso y salida");
 
         var lblUsuario = new Label
         {
@@ -49,9 +57,12 @@ public class MainForm : Form
         Controls.Add(encabezado);
 
         // ---------- Tarjetas de resumen ----------
-        Controls.Add(CrearEstadistica("Visitas de hoy", lblHoy, Estilo.PrimarioClaro, 20));
-        Controls.Add(CrearEstadistica("Dentro de la empresa ahora", lblDentro, Estilo.Advertencia, 340));
-        Controls.Add(CrearEstadistica("Visitas del mes", lblMes, Estilo.Acento, 660));
+        // El trabajador ve los mismos números, pero solo de sus propias visitas
+        bool propio = _usuario.EsTrabajador;
+        Controls.Add(CrearEstadistica(propio ? "Mis visitas de hoy" : "Visitas de hoy", lblHoy, Estilo.PrimarioClaro, Columna(0)));
+        Controls.Add(CrearEstadistica(propio ? "Me esperan ahora" : "Dentro de la empresa ahora", lblDentro, Estilo.Advertencia, Columna(1)));
+        Controls.Add(CrearEstadistica(propio ? "Mis visitas del mes" : "Visitas del mes", lblMes, Estilo.Acento, Columna(2)));
+        Controls.Add(CrearEstadistica(propio ? "Mis avisos sin leer" : "Avisos sin leer", lblAvisos, Estilo.Peligro, Columna(3)));
 
         // ---------- Módulos ----------
         Controls.Add(new Label
@@ -64,40 +75,58 @@ public class MainForm : Form
             Top = 232
         });
 
-        Controls.Add(CrearModulo(
-            "Registrar visitas",
-            "Ingreso de visitantes, aviso al anfitrión y registro de salida.",
-            Estilo.Acento, 20, 272,
-            () =>
+        // Cada rol ve solo sus módulos; se acomodan en columnas seguidas, sin huecos
+        int columna = 0;
+        void AgregarModulo(string titulo, string descripcion, Color color, Func<Form> crearVentana)
+        {
+            Controls.Add(CrearModulo(titulo, descripcion, color, Columna(columna++), 272, () =>
             {
-                using var f = new RegistroVisitaForm();
+                using var f = crearVentana();
                 f.ShowDialog(this);
                 CargarResumen();
             }));
-
-        Controls.Add(CrearModulo(
-            "Reportes",
-            "Consulte las visitas por día, semana o mes y expórtelas a Excel.",
-            Estilo.PrimarioClaro, 340, 272,
-            () =>
-            {
-                using var f = new ReporteForm();
-                f.ShowDialog(this);
-            }));
-
-        // Solo el administrador ve el módulo de administración
-        if (_usuario.Rol == "Administrador")
-        {
-            Controls.Add(CrearModulo(
-                "Administración",
-                "Áreas, empleados, límites permitidos y usuarios del sistema.",
-                Estilo.Advertencia, 660, 272,
-                () =>
-                {
-                    using var f = new AdminForm();
-                    f.ShowDialog(this);
-                }));
         }
+
+        if (_usuario.EsTrabajador)
+        {
+            // Trabajador: solo sus avisos
+            AgregarModulo("Mis avisos",
+                "Vea quién lo espera en recepción y marque sus avisos como leídos.",
+                Estilo.Advertencia, () => new AvisosForm(_usuario.IdEmpleado));
+        }
+        else
+        {
+            // Recepcionista y Administrador
+            AgregarModulo("Registrar visitas",
+                "Ingreso de visitantes, aviso al anfitrión y registro de salida.",
+                Estilo.Acento, () => new RegistroVisitaForm());
+
+            AgregarModulo("Avisos",
+                "El anfitrión elige su nombre y ve quién lo espera en recepción.",
+                Estilo.Advertencia, () => new AvisosForm());
+
+            AgregarModulo("Reportes",
+                "Consulte las visitas por día, semana o mes y expórtelas a Excel.",
+                Estilo.PrimarioClaro, () => new ReporteForm());
+
+            // Solo el administrador ve el módulo de administración
+            if (_usuario.EsAdministrador)
+            {
+                AgregarModulo("Administración",
+                    "Áreas, empleados, límites permitidos y usuarios del sistema.",
+                    Estilo.Primario, () => new AdminForm());
+            }
+        }
+
+        // Cada pocos segundos: revisa visitas con el tiempo terminado, actualiza los números
+        // y, si es un trabajador, le avisa con una notificación de Windows
+        var timer = new System.Windows.Forms.Timer { Interval = Config.SegundosActualizarAvisos * 1000 };
+        timer.Tick += (s, e) => Revisar();
+        timer.Start();
+        FormClosed += (s, e) => timer.Dispose();
+
+        if (_usuario.EsTrabajador)
+            PrepararNotificaciones();
 
         // ---------- Pie de página ----------
         Controls.Add(new Label
@@ -115,6 +144,91 @@ public class MainForm : Form
         btnSalir.Click += (s, e) => Close();
         Controls.Add(btnSalir);
 
+        Revisar();
+        Estilo.AjustarAPantalla(this);
+    }
+
+    // ======================= REVISIÓN PERIÓDICA =======================
+    private void Revisar()
+    {
+        try
+        {
+            _notificacionService.RevisarTiemposTerminados();
+        }
+        catch
+        {
+            // Si falla la conexión un momento, se reintenta en el siguiente ciclo
+        }
+
+        CargarResumen();
+        NotificarNuevos();
+    }
+
+    // ======================= NOTIFICACIONES (rol Trabajador) =======================
+    // Ícono junto al reloj de Windows; muestra un globo cuando llega un aviso nuevo.
+    private NotifyIcon? _icono;
+    private int _ultimoAvisoNotificado;
+
+    private void PrepararNotificaciones()
+    {
+        _icono = new NotifyIcon
+        {
+            Icon = SystemIcons.Information,
+            Text = "Registro de Visitas - Mis avisos",
+            Visible = true
+        };
+        _icono.BalloonTipClicked += (s, e) => AbrirMisAvisos();
+        _icono.DoubleClick += (s, e) => AbrirMisAvisos();
+        FormClosed += (s, e) => _icono.Dispose();   // si no, el ícono se queda junto al reloj
+
+        // Solo se notifican los avisos que lleguen de aquí en adelante;
+        // los que ya estaban pendientes se resumen en un solo globo al entrar.
+        _ultimoAvisoNotificado = _notificacionService.UltimoIdAviso(_usuario.IdEmpleado!.Value);
+        Shown += (s, e) =>
+        {
+            int pendientes = _notificacionService.ContarSinLeer(_usuario.IdEmpleado);
+            if (pendientes > 0)
+                _icono.ShowBalloonTip(5000, "Avisos pendientes",
+                    $"Tiene {pendientes} aviso{(pendientes == 1 ? "" : "s")} sin leer.", ToolTipIcon.Info);
+        };
+    }
+
+    private void NotificarNuevos()
+    {
+        if (_icono == null) return;
+
+        try
+        {
+            var nuevos = _notificacionService.ObtenerNuevos(_usuario.IdEmpleado!.Value, _ultimoAvisoNotificado);
+            if (nuevos.Count == 0) return;
+
+            _ultimoAvisoNotificado = nuevos.Max(a => a.IdAviso);
+
+            // Se muestra el más reciente; si llegaron varios juntos, se dice cuántos
+            var ultimo = nuevos[^1];
+            string titulo = ultimo.Tipo == TiposAviso.TiempoTerminado
+                ? "Terminó el tiempo de una visita"
+                : "Tiene una visita en recepción";
+            string texto = nuevos.Count == 1
+                ? ultimo.Mensaje
+                : $"{ultimo.Mensaje}\n(y {nuevos.Count - 1} aviso{(nuevos.Count == 2 ? "" : "s")} más)";
+
+            _icono.ShowBalloonTip(8000, titulo, texto,
+                ultimo.Tipo == TiposAviso.TiempoTerminado ? ToolTipIcon.Warning : ToolTipIcon.Info);
+        }
+        catch
+        {
+            // La notificación es solo una ayuda: si falla, el aviso igual está en "Mis avisos"
+        }
+    }
+
+    private void AbrirMisAvisos()
+    {
+        // Si ya está abierta (o hay otra ventana encima), no se abre otra
+        if (OwnedForms.Length > 0 || Application.OpenForms.OfType<AvisosForm>().Any()) return;
+
+        using var f = new AvisosForm(_usuario.IdEmpleado);
+        f.ShowDialog(this);
         CargarResumen();
     }
 
@@ -123,10 +237,14 @@ public class MainForm : Form
     {
         try
         {
-            var (hoy, dentro, mes) = _visitaService.ObtenerResumen();
+            // null = todos; para el trabajador, solo su empleado
+            int? idEmpleado = _usuario.EsTrabajador ? _usuario.IdEmpleado : null;
+
+            var (hoy, dentro, mes) = _visitaService.ObtenerResumen(idEmpleado);
             lblHoy.Text = hoy.ToString();
             lblDentro.Text = dentro.ToString();
             lblMes.Text = mes.ToString();
+            lblAvisos.Text = _notificacionService.ContarSinLeer(idEmpleado).ToString();
         }
         catch
         {
@@ -138,7 +256,7 @@ public class MainForm : Form
     /// <summary>Tarjeta con un número grande (visitas hoy, dentro ahora, etc.).</summary>
     private static Panel CrearEstadistica(string titulo, Label lblNumero, Color color, int x)
     {
-        var tarjeta = Estilo.Tarjeta(x, 100, 300, 110);
+        var tarjeta = Estilo.Tarjeta(x, 100, AnchoTarjeta, 110);
 
         // Barrita de color a la izquierda
         tarjeta.Controls.Add(new Panel { Left = 1, Top = 1, Width = 5, Height = 108, BackColor = color });
@@ -160,9 +278,9 @@ public class MainForm : Form
     /// <summary>Tarjeta grande y clickeable que abre un módulo.</summary>
     private static Panel CrearModulo(string titulo, string descripcion, Color color, int x, int y, Action alAbrir)
     {
-        var tarjeta = Estilo.Tarjeta(x, y, 300, 190);
+        var tarjeta = Estilo.Tarjeta(x, y, AnchoTarjeta, 190);
 
-        var franja = new Panel { Left = 1, Top = 1, Width = 298, Height = 6, BackColor = color };
+        var franja = new Panel { Left = 1, Top = 1, Width = AnchoTarjeta - 2, Height = 6, BackColor = color };
 
         var lblTitulo = new Label
         {
@@ -183,9 +301,9 @@ public class MainForm : Form
             BackColor = Color.Transparent,
             AutoSize = false,
             Left = 20,
-            Top = 74,
-            Width = 260,
-            Height = 62
+            Top = 70,
+            Width = AnchoTarjeta - 40,
+            Height = 72
         };
 
         var lblAbrir = new Label

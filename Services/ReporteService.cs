@@ -53,6 +53,7 @@ public class ReporteService
             .Include(v => v.Visitante)
             .Include(v => v.Empleado)
             .Include(v => v.Area)
+            .Include(v => v.Avisos)
             .Where(v => v.FechaHoraEntrada >= desde && v.FechaHoraEntrada < hasta)
             .OrderBy(v => v.FechaHoraEntrada)
             .ToList();
@@ -81,7 +82,16 @@ public class ReporteService
             Entrada = v.FechaHoraEntrada.ToString("dd/MM/yyyy HH:mm"),
             Salida = v.FechaHoraSalida?.ToString("dd/MM/yyyy HH:mm") ?? "—",
             DuracionMin = duracion,
-            Notificado = v.NotificacionEnviada ? "Sí" : "No"
+            Aviso = EstadoAviso(v)
         };
+    }
+
+    /// <summary>Estado del aviso al anfitrión: si se generó y si ya lo leyó.</summary>
+    private static string EstadoAviso(Visita v)
+    {
+        // Solo cuenta el aviso de llegada (el de "tiempo terminado" es aparte)
+        var llegada = v.Avisos.Where(a => a.Tipo == TiposAviso.Llegada).ToList();
+        if (llegada.Count == 0) return "No enviado";
+        return llegada.Any(a => a.Leido) ? "Leído" : "Sin leer";
     }
 }

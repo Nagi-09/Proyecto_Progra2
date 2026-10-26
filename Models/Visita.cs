@@ -17,7 +17,11 @@ public class Visita
     public DateTime FechaHoraEntrada { get; set; }
     public DateTime? FechaHoraSalida { get; set; }   // null = visita "abierta"
     public string Motivo { get; set; } = "";
-    public bool NotificacionEnviada { get; set; }
+    public bool NotificacionEnviada { get; set; }   // true cuando ya se generó el aviso al anfitrión
 
-    public List<LogNotificacion> Logs { get; set; } = new();
+    // Tiempo permitido (según el límite que aplicó al registrarla). Al pasar, se avisa al anfitrión.
+    public int DuracionMaxMin { get; set; } = Config.DuracionGenericaMin;
+    public DateTime HoraLimite => FechaHoraEntrada.AddMinutes(DuracionMaxMin);
+
+    public List<Aviso> Avisos { get; set; } = new();
 }

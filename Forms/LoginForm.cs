@@ -102,6 +102,8 @@ public class LoginForm : Form
 
         // Enter = clic en Ingresar
         AcceptButton = btnIngresar;
+
+        Estilo.AjustarAPantalla(this);
     }
 
     private void BtnIngresar_Click(object? sender, EventArgs e)

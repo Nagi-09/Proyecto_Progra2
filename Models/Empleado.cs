@@ -14,6 +14,7 @@ public class Empleado
     public Area? Area { get; set; }
 
     public List<Visita> Visitas { get; set; } = new();
+    public List<Aviso> Avisos { get; set; } = new();
 
     public override string ToString() => Nombre;
 }

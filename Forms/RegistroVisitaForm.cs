@@ -7,7 +7,7 @@ namespace VisitasRecepcion.Forms;
 
 /// <summary>
 /// Módulo de registro de visitas: buscar visitante, registrar ingreso,
-/// notificar al anfitrión y registrar la salida.
+/// dejar el aviso interno al anfitrión y registrar la salida.
 /// </summary>
 public class RegistroVisitaForm : Form
 {
@@ -37,8 +37,9 @@ public class RegistroVisitaForm : Form
     public RegistroVisitaForm()
     {
         Text = "Registro de visitas";
-        ClientSize = new Size(984, 700);
-        MinimumSize = new Size(1000, 700);
+        // Alto pensado para que quepa en pantallas de 1080 px al 150 %
+        ClientSize = new Size(984, 640);
+        MinimumSize = new Size(1000, 680);
         StartPosition = FormStartPosition.CenterParent;
         Estilo.Formulario(this);
 
@@ -47,6 +48,14 @@ public class RegistroVisitaForm : Form
 
         CargarCombos();
         CargarAbiertas();
+
+        // Refresca la tabla para ver cuándo el anfitrión lee su aviso
+        var timer = new System.Windows.Forms.Timer { Interval = Config.SegundosActualizarAvisos * 1000 };
+        timer.Tick += (s, e) => CargarAbiertas();
+        timer.Start();
+        FormClosed += (s, e) => timer.Dispose();
+
+        Estilo.AjustarAPantalla(this);
     }
 
     // ======================= INTERFAZ =======================
@@ -56,62 +65,80 @@ public class RegistroVisitaForm : Form
             "Busque un visitante recurrente o registre uno nuevo"));
 
         // ---------- Tarjeta 1: búsqueda ----------
-        var tarjetaBuscar = Estilo.Tarjeta(20, 100, 944, 140);
+        // Las tarjetas van separadas 12 px entre sí y 20 px de los bordes
+        var tarjetaBuscar = Estilo.Tarjeta(20, 96, 944, 104);
         tarjetaBuscar.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
         tarjetaBuscar.Controls.Add(Estilo.TituloTarjeta("1. Buscar visitante", 20, 12));
-        tarjetaBuscar.Controls.Add(Estilo.Caption("Nombre o documento", 20, 46));
+        tarjetaBuscar.Controls.Add(Estilo.Caption("Nombre o documento", 20, 42));
 
-        txtBuscar.SetBounds(20, 68, 300, 28);
+        txtBuscar.SetBounds(20, 64, 300, 28);
+        txtBuscar.KeyDown += (s, e) =>
+        {
+            if (e.KeyCode != Keys.Enter) return;
+            e.SuppressKeyPress = true;   // sin el "ding" de Windows
+            BtnBuscar_Click(s, e);
+        };
 
         btnBuscar.Text = "Buscar";
-        btnBuscar.SetBounds(330, 66, 110, 32);
+        btnBuscar.SetBounds(332, 62, 110, 32);
         Estilo.Boton(btnBuscar, Estilo.Primario);
         btnBuscar.Click += BtnBuscar_Click;
 
-        tarjetaBuscar.Controls.Add(Estilo.Caption("Si la persona ya visitó antes, selecciónela en la lista.", 20, 108));
-        tarjetaBuscar.Controls.Add(Estilo.Caption("Resultados", 470, 14));
+        tarjetaBuscar.Controls.Add(Estilo.Caption("Resultados  (si la persona ya visitó antes, selecciónela aquí)", 470, 12));
 
-        lstResultados.SetBounds(470, 36, 454, 90);
+        lstResultados.SetBounds(470, 34, 454, 58);
         lstResultados.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         lstResultados.SelectedIndexChanged += LstResultados_SelectedIndexChanged;
 
         tarjetaBuscar.Controls.AddRange(new Control[] { txtBuscar, btnBuscar, lstResultados });
 
         // ---------- Tarjeta 2: datos de la visita ----------
-        var tarjetaDatos = Estilo.Tarjeta(20, 252, 944, 220);
+        var tarjetaDatos = Estilo.Tarjeta(20, 212, 944, 212);
         tarjetaDatos.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
         tarjetaDatos.Controls.Add(Estilo.TituloTarjeta("2. Datos de la visita", 20, 12));
 
-        // Fila 1
-        AgregarCampo(tarjetaDatos, "Nombre", txtNombre, 20, 48, 210);
-        AgregarCampo(tarjetaDatos, "Documento", txtDocumento, 250, 48, 210);
-        AgregarCampo(tarjetaDatos, "Teléfono", txtTelefono, 480, 48, 210);
-        AgregarCampo(tarjetaDatos, "Correo", txtCorreo, 710, 48, 214);
+        // Fila 1 (todos obligatorios)
+        AgregarCampo(tarjetaDatos, "Nombre *", txtNombre, 20, 44, 210);
+        AgregarCampo(tarjetaDatos, $"Documento (DPI, {Config.LargoDocumento} números) *", txtDocumento, 250, 44, 210);
+        AgregarCampo(tarjetaDatos, $"Teléfono ({Config.LargoTelefono} números) *", txtTelefono, 480, 44, 210);
+        AgregarCampo(tarjetaDatos, "Correo *", txtCorreo, 710, 44, 214);
+
+        // Cada campo solo deja escribir los caracteres permitidos
+        txtNombre.MaxLength = 100;
+        txtDocumento.MaxLength = Config.LargoDocumento;
+        txtTelefono.MaxLength = Config.LargoTelefono;
+        txtCorreo.MaxLength = 100;
+        SoloPermitir(txtNombre, ValidacionVisitante.CaracterNombre);
+        SoloPermitir(txtDocumento, ValidacionVisitante.CaracterNumero);
+        SoloPermitir(txtTelefono, ValidacionVisitante.CaracterNumero);
+        SoloPermitir(txtCorreo, ValidacionVisitante.CaracterCorreo);
 
         // Fila 2
         cmbArea.DropDownStyle = ComboBoxStyle.DropDownList;
         cmbEmpleado.DropDownStyle = ComboBoxStyle.DropDownList;
-        AgregarCampo(tarjetaDatos, "Área a visitar", cmbArea, 20, 112, 210);
-        AgregarCampo(tarjetaDatos, "Anfitrión (a quién visita)", cmbEmpleado, 250, 112, 210);
-        AgregarCampo(tarjetaDatos, "Motivo de la visita", txtMotivo, 480, 112, 444);
+        AgregarCampo(tarjetaDatos, "Área a visitar *", cmbArea, 20, 104, 210);
+        AgregarCampo(tarjetaDatos, "Anfitrión (a quién visita) *", cmbEmpleado, 250, 104, 210);
+        AgregarCampo(tarjetaDatos, "Motivo de la visita *", txtMotivo, 480, 104, 444);
 
-        // Botones
+        tarjetaDatos.Controls.Add(Estilo.Caption("* Campos obligatorios", 20, 175));
+
+        // Botones (alineados con el borde derecho de los campos)
         btnNuevo.Text = "Limpiar / Nuevo";
-        btnNuevo.SetBounds(584, 172, 130, 38);
+        btnNuevo.SetBounds(574, 166, 150, 36);
         Estilo.BotonSecundario(btnNuevo);
         btnNuevo.Click += (s, e) => LimpiarFormulario();
 
         btnRegistrar.Text = "Registrar ingreso";
-        btnRegistrar.SetBounds(724, 172, 200, 38);
+        btnRegistrar.SetBounds(734, 166, 190, 36);
         Estilo.Boton(btnRegistrar, Estilo.Acento);
         btnRegistrar.Click += BtnRegistrar_Click;
 
         tarjetaDatos.Controls.AddRange(new Control[] { btnNuevo, btnRegistrar });
 
         // ---------- Tarjeta 3: visitas abiertas (sin salida) ----------
-        var tarjetaAbiertas = Estilo.Tarjeta(20, 484, 944, 196);
+        var tarjetaAbiertas = Estilo.Tarjeta(20, 436, 944, 184);
         tarjetaAbiertas.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 
         tarjetaAbiertas.Controls.Add(Estilo.TituloTarjeta("3. Visitas dentro de la empresa (sin hora de salida)", 20, 12));
@@ -122,10 +149,10 @@ public class RegistroVisitaForm : Form
         Estilo.Boton(btnSalida, Estilo.Advertencia);
         btnSalida.Click += BtnSalida_Click;
 
-        dgvAbiertas.SetBounds(20, 48, 904, 136);
+        dgvAbiertas.SetBounds(20, 50, 904, 120);
         dgvAbiertas.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         Estilo.Grid(dgvAbiertas);
-        dgvAbiertas.RowTemplate.Height = 28;
+        dgvAbiertas.RowTemplate.Height = Estilo.Escalar(dgvAbiertas, 28);
         dgvAbiertas.CellFormatting += (s, e) => Estilo.FormatoCeldas(dgvAbiertas, e);
 
         tarjetaAbiertas.Controls.AddRange(new Control[] { btnSalida, dgvAbiertas });
@@ -139,6 +166,32 @@ public class RegistroVisitaForm : Form
         tarjeta.Controls.Add(Estilo.Caption(titulo, x, y));
         control.SetBounds(x, y + 22, ancho, 28);
         tarjeta.Controls.Add(control);
+    }
+
+    /// <summary>
+    /// Hace que una caja de texto solo acepte los caracteres permitidos.
+    /// KeyPress bloquea lo que se escribe; TextChanged limpia lo que se pega con Ctrl+V
+    /// o lo que viene de la base (por ejemplo, un teléfono guardado como "5512 3456").
+    /// </summary>
+    private static void SoloPermitir(TextBox caja, Func<char, bool> permitido)
+    {
+        caja.KeyPress += (s, e) =>
+        {
+            if (!char.IsControl(e.KeyChar) && !permitido(e.KeyChar))
+                e.Handled = true;
+        };
+
+        caja.TextChanged += (s, e) =>
+        {
+            string limpio = new string(caja.Text.Where(permitido).ToArray());
+            if (limpio.Length > caja.MaxLength)
+                limpio = limpio[..caja.MaxLength];
+            if (limpio == caja.Text) return;
+
+            int cursor = Math.Max(0, caja.SelectionStart - (caja.Text.Length - limpio.Length));
+            caja.Text = limpio;
+            caja.SelectionStart = Math.Min(cursor, limpio.Length);
+        };
     }
 
     // ======================= CARGA DE DATOS =======================
@@ -156,9 +209,21 @@ public class RegistroVisitaForm : Form
 
     private void CargarAbiertas()
     {
+        // Recordamos la fila elegida para no perderla al refrescar
+        var elegida = dgvAbiertas.CurrentRow?.Cells["IdVisita"].Value as int?;
+
         dgvAbiertas.DataSource = _visitaService.ObtenerAbiertas();
         if (dgvAbiertas.Columns["IdVisita"] != null)
             dgvAbiertas.Columns["IdVisita"]!.Visible = false;   // el Id no se muestra
+
+        foreach (DataGridViewRow fila in dgvAbiertas.Rows)
+        {
+            if ((int)fila.Cells["IdVisita"].Value == elegida)
+            {
+                dgvAbiertas.CurrentCell = fila.Cells["Visitante"];
+                break;
+            }
+        }
     }
 
     // ======================= EVENTOS =======================
@@ -188,15 +253,38 @@ public class RegistroVisitaForm : Form
         }
     }
 
-    private async void BtnRegistrar_Click(object? sender, EventArgs e)
+    private void BtnRegistrar_Click(object? sender, EventArgs e)
     {
-        // ---- Validaciones simples ----
-        if (string.IsNullOrWhiteSpace(txtNombre.Text) || string.IsNullOrWhiteSpace(txtDocumento.Text))
+        // ---- Armar el visitante con lo que hay en pantalla ----
+        var datos = new Visitante
         {
-            MessageBox.Show("El nombre y el documento son obligatorios.", "Faltan datos",
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            IdVisitante = _visitanteSeleccionado?.IdVisitante ?? 0,   // 0 = nuevo
+            Nombre = string.Join(" ", txtNombre.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)),
+            Documento = txtDocumento.Text.Trim(),
+            Telefono = txtTelefono.Text.Trim(),
+            Correo = txtCorreo.Text.Trim()
+        };
+
+        // ---- Validar nombre, documento, teléfono y correo ----
+        var errores = ValidacionVisitante.Validar(datos);
+        if (errores.Count > 0)
+        {
+            MessageBox.Show("Revise los datos del visitante:\n\n• " + string.Join("\n• ", errores.Select(x => x.Mensaje)),
+                "Datos incompletos o inválidos", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+            // Ponemos el cursor en el primer campo con error
+            TextBox campo = errores[0].Campo switch
+            {
+                "Nombre" => txtNombre,
+                "Documento" => txtDocumento,
+                "Telefono" => txtTelefono,
+                _ => txtCorreo
+            };
+            campo.Focus();
+            campo.SelectAll();
             return;
         }
+
         if (cmbArea.SelectedValue == null || cmbEmpleado.SelectedValue == null)
         {
             MessageBox.Show("Seleccione el área y el anfitrión. (Si no hay, el administrador debe crearlos.)",
@@ -207,18 +295,9 @@ public class RegistroVisitaForm : Form
         {
             MessageBox.Show("Escriba el motivo de la visita.", "Faltan datos",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            txtMotivo.Focus();
             return;
         }
-
-        // ---- Armar el visitante con lo que hay en pantalla ----
-        var datos = new Visitante
-        {
-            IdVisitante = _visitanteSeleccionado?.IdVisitante ?? 0,   // 0 = nuevo
-            Nombre = txtNombre.Text.Trim(),
-            Documento = txtDocumento.Text.Trim(),
-            Telefono = txtTelefono.Text.Trim(),
-            Correo = txtCorreo.Text.Trim()
-        };
 
         btnRegistrar.Enabled = false;
         try
@@ -230,14 +309,14 @@ public class RegistroVisitaForm : Form
                 (int)cmbArea.SelectedValue,
                 txtMotivo.Text.Trim());
 
-            // 2) Notificar al anfitrión por correo
-            var (ok, mensajeCorreo) = await _notificacionService.EnviarAvisoAsync(resultado.IdVisita);
+            // 2) Dejar el aviso interno para el anfitrión
+            var (ok, mensajeAviso) = _notificacionService.CrearAviso(resultado.IdVisita);
 
             // 3) Mostrar el resumen
             string tipo = resultado.EraPrimeraVisita
                 ? "Visitante NUEVO: se aplicó el límite genérico."
                 : "Visitante recurrente.";
-            string texto = $"Visita registrada.\n\n{tipo}\nDuración máxima: {resultado.DuracionMaxMin} min.\n\n{mensajeCorreo}";
+            string texto = $"Visita registrada.\n\n{tipo}\nDuración máxima: {resultado.DuracionMaxMin} min.\n\n{mensajeAviso}";
             if (resultado.Advertencia != "")
                 texto += "\n\nADVERTENCIA: " + resultado.Advertencia;
 

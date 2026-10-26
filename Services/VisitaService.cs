@@ -35,6 +35,11 @@ public class VisitaService
     /// </summary>
     public ResultadoRegistro RegistrarVisita(Visitante datos, int idEmpleado, int idArea, string motivo)
     {
+        // Nunca guardar datos inválidos, aunque el formulario ya los haya revisado
+        var errores = ValidacionVisitante.Validar(datos);
+        if (errores.Count > 0)
+            throw new InvalidOperationException(string.Join("\n", errores.Select(e => e.Mensaje)));
+
         using var db = new AppDbContext();
         var resultado = new ResultadoRegistro();
 
@@ -76,6 +81,7 @@ public class VisitaService
         limite ??= db.Limites.FirstOrDefault(l => l.EsGenerico);
 
         var ahora = DateTime.Now;
+        resultado.DuracionMaxMin = Config.DuracionGenericaMin;   // por si no hay ningún límite configurado
 
         if (limite != null)
         {
@@ -96,7 +102,8 @@ public class VisitaService
             IdEmpleado = idEmpleado,
             IdArea = idArea,
             Motivo = motivo,
-            FechaHoraEntrada = ahora
+            FechaHoraEntrada = ahora,
+            DuracionMaxMin = resultado.DuracionMaxMin
         };
         db.Visitas.Add(visita);
         db.SaveChanges();
@@ -118,8 +125,11 @@ public class VisitaService
         }
     }
 
-    /// <summary>Números para las tarjetas del menú principal: visitas de hoy, dentro ahora y del mes.</summary>
-    public (int Hoy, int Dentro, int Mes) ObtenerResumen()
+    /// <summary>
+    /// Números para las tarjetas del menú principal: visitas de hoy, dentro ahora y del mes.
+    /// Si se indica idEmpleado, cuenta solo las visitas de ese anfitrión (rol Trabajador).
+    /// </summary>
+    public (int Hoy, int Dentro, int Mes) ObtenerResumen(int? idEmpleado = null)
     {
         using var db = new AppDbContext();
 
@@ -128,9 +138,11 @@ public class VisitaService
         var inicioMes = new DateTime(hoy.Year, hoy.Month, 1);
         var finMes = inicioMes.AddMonths(1);
 
-        int visitasHoy = db.Visitas.Count(v => v.FechaHoraEntrada >= hoy && v.FechaHoraEntrada < manana);
-        int dentro = db.Visitas.Count(v => v.FechaHoraSalida == null);
-        int delMes = db.Visitas.Count(v => v.FechaHoraEntrada >= inicioMes && v.FechaHoraEntrada < finMes);
+        var visitas = db.Visitas.Where(v => idEmpleado == null || v.IdEmpleado == idEmpleado);
+
+        int visitasHoy = visitas.Count(v => v.FechaHoraEntrada >= hoy && v.FechaHoraEntrada < manana);
+        int dentro = visitas.Count(v => v.FechaHoraSalida == null);
+        int delMes = visitas.Count(v => v.FechaHoraEntrada >= inicioMes && v.FechaHoraEntrada < finMes);
 
         return (visitasHoy, dentro, delMes);
     }
@@ -144,6 +156,7 @@ public class VisitaService
             .Include(v => v.Visitante)
             .Include(v => v.Empleado)
             .Include(v => v.Area)
+            .Include(v => v.Avisos)
             .Where(v => v.FechaHoraSalida == null)
             .OrderByDescending(v => v.FechaHoraEntrada)
             .ToList();

@@ -14,7 +14,7 @@ public class ExcelService
         string[] titulos =
         {
             "Visitante", "Documento", "Anfitrión", "Área", "Motivo",
-            "Entrada", "Salida", "Duración (min)", "Notificado"
+            "Entrada", "Salida", "Duración (min)", "Aviso"
         };
         for (int i = 0; i < titulos.Length; i++)
             hoja.Cell(1, i + 1).Value = titulos[i];
@@ -36,7 +36,7 @@ public class ExcelService
             hoja.Cell(fila, 6).Value = f.Entrada;
             hoja.Cell(fila, 7).Value = f.Salida;
             hoja.Cell(fila, 8).Value = f.DuracionMin;
-            hoja.Cell(fila, 9).Value = f.Notificado;
+            hoja.Cell(fila, 9).Value = f.Aviso;
             fila++;
         }
 
